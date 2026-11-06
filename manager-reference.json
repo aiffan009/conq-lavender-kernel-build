@@ -1,0 +1,9 @@
+{
+  "file": "KERNEL.apk",
+  "package": "jpshms.czdyiu.mlthbt",
+  "version_code": 12797,
+  "version_name": "v1.0.9-spoofed",
+  "label": "KernelSU Next",
+  "sha256": "d39a48529e5586b786c565311d19bd54ba063cf7d5508927497759d7102a06c1",
+  "note": "User-supplied modified Manager APK. Not uploaded or installed by this build. KernelSU integration must check Manager ABI and APK signature/package compatibility before reusing it."
+}

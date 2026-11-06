@@ -1,0 +1,11 @@
+{
+  "kernel_repository": "https://github.com/stormbreaker-project/kernel_xiaomi_lavender",
+  "kernel_commit": "46b4f3ea4a835fa6a1752d0608f36c9377c5094e",
+  "kernel_version": "4.4.285",
+  "toolchain_repository": "https://github.com/kdrag0n/proton-clang",
+  "toolchain_commit": "9fb011b183fe7e69b04b873ef6533b4b077e3c5e",
+  "llvm_commit": "b4fd512c36ca344a3ff69350219e8b0a67e9472a",
+  "original_boot_sha256": "94f5f628af7b0d7951c34d062085df607f63534871844451df614af90eed3ecd",
+  "stage": "baseline_without_kernelsu",
+  "source_caveat": "Original kernel is marked dirty; public commit may lack uncommitted Conq changes. Baseline must boot before KernelSU integration."
+}
