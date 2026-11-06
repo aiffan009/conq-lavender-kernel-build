@@ -2,7 +2,7 @@ from pathlib import Path
 import argparse,struct,hashlib,zlib,json,subprocess,sys,zipfile
 
 ROOT=Path(__file__).resolve().parent.parent
-def package(kernel,out):
+def package(kernel,out,variant='baseline'):
     lock=json.loads((ROOT/'build-lock.json').read_text())
     with zipfile.ZipFile(ROOT/'fixtures/original-boot.zip') as z:base=z.read('boot.img')
     assert hashlib.sha256(base).hexdigest()==lock['original_boot_sha256']
@@ -13,6 +13,10 @@ def package(kernel,out):
     raw=decoder.decompress(payload)+decoder.flush();dtb=decoder.unused_data
     assert decoder.eof and raw[56:60]==b'ARMd'
     assert b'Linux version 4.4.285' in raw
+    with_ksu=variant=='kernelsu-next'
+    if with_ksu:
+        assert b'KernelSU' in raw
+        lock=dict(lock,stage='kernelsu_next_v1.0.9_manual_hooks',kernelsu_commit='2241696498ce9dd742ce80b52c3ed6cca26e03ea',kernelsu_version=12797)
     assert dtb[:4]==b'\xd0\x0d\xfe\xed'
     assert struct.unpack_from('>I',dtb,4)[0]==len(dtb)
     page=struct.unpack_from('<I',base,36)[0];assert page==4096
@@ -30,8 +34,9 @@ def package(kernel,out):
     (out/'avb-verification.txt').write_text(verify.stdout+verify.stderr)
     assert verify.returncode==0,(verify.stdout,verify.stderr)
     boot_hash=hashlib.sha256(result).hexdigest()
-    script=(ROOT/'fixtures/recovery-installer.sh').read_text().replace('@TITLE@','Conq 4.4 BASELINE TEST - no KernelSU').replace('@SHA256@',boot_hash)
-    archive=out/'Conq-4.4-BASELINE-NO-KSU-TEST.zip'
+    title='Conq 4.4 KernelSU Next 12797 TEST' if with_ksu else 'Conq 4.4 BASELINE TEST - no KernelSU'
+    script=(ROOT/'fixtures/recovery-installer.sh').read_text().replace('@TITLE@',title).replace('@SHA256@',boot_hash)
+    archive=out/('Conq-4.4-KernelSU-Next-12797-TEST.zip' if with_ksu else 'Conq-4.4-BASELINE-NO-KSU-TEST.zip')
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
         z.writestr('META-INF/com/google/android/update-binary',script)
         z.writestr('META-INF/com/google/android/updater-script','# Recovery shell installer\n')
@@ -41,8 +46,8 @@ def package(kernel,out):
     with zipfile.ZipFile(archive) as z:assert z.testzip() is None
     zip_hash=hashlib.sha256(archive.read_bytes()).hexdigest()
     (out/(archive.name+'.sha256')).write_text(zip_hash+'  '+archive.name+'\n')
-    (out/'build-manifest.json').write_text(json.dumps({'stage':lock['stage'],'kernelsu_integrated':False,'device_tested':False,'kernel_payload_sha256':hashlib.sha256(payload).hexdigest(),'dtb_sha256':hashlib.sha256(dtb).hexdigest(),'boot_sha256':boot_hash,'zip_sha256':zip_hash,'source':lock},indent=2))
+    (out/'build-manifest.json').write_text(json.dumps({'stage':lock['stage'],'kernelsu_integrated':with_ksu,'device_tested':False,'kernel_payload_sha256':hashlib.sha256(payload).hexdigest(),'dtb_sha256':hashlib.sha256(dtb).hexdigest(),'boot_sha256':boot_hash,'zip_sha256':zip_hash,'source':lock},indent=2))
     print('PACKAGED',archive)
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('--kernel',type=Path,required=True);parser.add_argument('--out',type=Path,required=True)
-    args=parser.parse_args();package(args.kernel,args.out.resolve())
+    parser=argparse.ArgumentParser();parser.add_argument('--kernel',type=Path,required=True);parser.add_argument('--out',type=Path,required=True);parser.add_argument('--variant',choices=['baseline','kernelsu-next'],default='baseline')
+    args=parser.parse_args();package(args.kernel,args.out.resolve(),args.variant)
