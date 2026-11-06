@@ -52,6 +52,45 @@ def integrate(kernel,ksu,manager,logs):
          '\tstruct dentry *dentry;\n\tvoid *priv = NULL;\n',
          'extern int ksu_handle_devpts(struct inode *inode);',
          '\tksu_handle_devpts(pts_inode);')
+    # Backport before make starts. Upstream's Makefile-time sed insertion can
+    # occur after fs/namespace.o has already been compiled by a parallel job.
+    umount_backport='''#ifdef CONFIG_KSU
+static int can_umount(const struct path *path, int flags)
+{
+\tstruct mount *mnt = real_mount(path->mnt);
+
+\tif (flags & ~(MNT_FORCE | MNT_DETACH | MNT_EXPIRE | UMOUNT_NOFOLLOW))
+\t\treturn -EINVAL;
+\tif (!may_mount())
+\t\treturn -EPERM;
+\tif (path->dentry != path->mnt->mnt_root)
+\t\treturn -EINVAL;
+\tif (!check_mnt(mnt))
+\t\treturn -EINVAL;
+\tif (mnt->mnt.mnt_flags & MNT_LOCKED)
+\t\treturn -EINVAL;
+\tif (flags & MNT_FORCE && !capable(CAP_SYS_ADMIN))
+\t\treturn -EPERM;
+\treturn 0;
+}
+
+int path_umount(struct path *path, int flags)
+{
+\tstruct mount *mnt = real_mount(path->mnt);
+\tint ret;
+
+\tret = can_umount(path, flags);
+\tif (!ret)
+\t\tret = do_umount(mnt, flags);
+\tdput(path->dentry);
+\tmntput_no_expire(mnt);
+\treturn ret;
+}
+#endif
+
+'''
+    edit('fs/namespace.c','static bool is_mnt_ns_file(struct dentry *dentry)',umount_backport+'static bool is_mnt_ns_file(struct dentry *dentry)')
+    edit('fs/internal.h','extern void __init mnt_init(void);','extern void __init mnt_init(void);\n#ifdef CONFIG_KSU\nint path_umount(struct path *path, int flags);\n#endif')
     # Built-in LSM hooks in this KSU tag supply prctl, setuid, rename and inode
     # permission hooks. Do not add duplicate LSM calls in security/security.c.
     makefile=kernel/'drivers/Makefile';text=makefile.read_text()
@@ -66,16 +105,20 @@ def integrate(kernel,ksu,manager,logs):
     # the exact upstream v1.0.9 release, instead of upstream's fallback 11998.
     mk=ksu/'kernel/Makefile';text=mk.read_text()
     assert text.count('ccflags-y += -DKSU_VERSION=11998')==1
-    mk.write_text(text.replace('ccflags-y += -DKSU_VERSION=11998','ccflags-y += -DKSU_VERSION=12797'))
+    text=text.replace('ccflags-y += -DKSU_VERSION=11998','ccflags-y += -DKSU_VERSION=12797')
+    start=text.index('ifneq ($(shell grep -Eq "^static int can_umount"')
+    end=text.index('ccflags-y += -Wno-implicit-function-declaration',start)
+    text=text[:start]+'# path_umount backport is applied by integrate_ksu.py before compilation.\n\n'+text[end:]
+    mk.write_text(text)
     embedded=ksu/'kernel/embed_ksud.c'
     with embedded.open('w') as f:
         f.write('/* Official ARM64 OverlayFS ksud from KernelSU Next v1.0.9. */\n')
         f.write('unsigned int ksud_size = '+str(len(daemon))+';\nconst char ksud[] = {\n')
         for i in range(0,len(daemon),24):f.write(','.join('0x%02x'%b for b in daemon[i:i+24])+',\n')
         f.write('};\n')
-    report={'kernelsu_commit':KSU_COMMIT,'kernelsu_version':12797,'hooks':'manual; built-in LSM hooks; no KSU kprobe hooks','manager_cert_size':998,'manager_cert_sha256':'79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7','official_manager_apk_sha256':APK_SHA256,'embedded_daemon_sha256':DAEMON_SHA256,'embedded_daemon_size':len(daemon),'manual_hook_file_sha256':changes,'kernel_namespace_note':'Upstream KernelSU v1.0.9 Makefile supplies its path_umount compatibility backport.'}
+    report={'kernelsu_commit':KSU_COMMIT,'kernelsu_version':12797,'hooks':'manual; built-in LSM hooks; no KSU kprobe hooks','manager_cert_size':998,'manager_cert_sha256':'79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7','official_manager_apk_sha256':APK_SHA256,'embedded_daemon_sha256':DAEMON_SHA256,'embedded_daemon_size':len(daemon),'manual_hook_file_sha256':changes,'kernel_namespace_note':'path_umount and can_umount plus internal prototype applied before compilation. Upstream Makefile-time namespace edits removed to prevent a parallel build race.'}
     (logs/'kernelsu-integration.json').write_text(json.dumps(report,indent=2))
-    print('Applied six guarded manual hooks and embedded official ARM64 ksud.')
+    print('Applied six guarded manual hooks, early path_umount backport, and official ARM64 ksud.')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--kernel',type=Path,required=True);p.add_argument('--ksu',type=Path,required=True);p.add_argument('--manager',type=Path,required=True);p.add_argument('--logs',type=Path,required=True)
