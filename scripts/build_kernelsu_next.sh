@@ -18,7 +18,7 @@ export PATH="$BUILD_ROOT/.ci/toolchain/bin:$PATH"
 clang --version | tee logs/compiler.txt
 grep -q 'b4fd512c36ca344a3ff69350219e8b0a67e9472a' logs/compiler.txt
 python3 scripts/integrate_ksu.py --kernel .ci/kernel --ksu .ci/KernelSU-Next --manager .ci/official-manager.apk --logs logs
-MAKE_ARGS=("O=$BUILD_ROOT/.ci/out" ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=-conq-ksunext)
+MAKE_ARGS=("O=$BUILD_ROOT/.ci/out" ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=-conq-ksunext-mfix1)
 make -C .ci/kernel "${MAKE_ARGS[@]}" lavender-perf_defconfig
 .ci/kernel/scripts/config --file .ci/out/.config -e OVERLAY_FS -e KALLSYMS -e KALLSYMS_ALL -e KSU -e KSU_LSM_SECURITY_HOOKS -d KSU_KPROBES_HOOK -d KSU_DEBUG
 make -C .ci/kernel "${MAKE_ARGS[@]}" olddefconfig
@@ -30,7 +30,7 @@ if grep -qx 'CONFIG_KSU_KPROBES_HOOK=y' .ci/out/.config; then echo 'KSU kprobe h
 python3 .ci/kernel/scripts/diffconfig configs/conq-original.config .ci/out/.config > logs/config-diff.txt
 make -C .ci/kernel "${MAKE_ARGS[@]}" -j"$(nproc)" Image.gz-dtb
 aarch64-linux-gnu-nm .ci/out/vmlinux > logs/vmlinux-symbols.txt
-for symbol in kernelsu_init ksu_handle_execveat ksu_handle_vfs_read ksu_handle_faccessat ksu_handle_stat ksu_handle_input_handle_event ksu_handle_devpts; do
+for symbol in kernelsu_init ksu_handle_execveat ksu_handle_vfs_read ksu_handle_faccessat ksu_handle_stat ksu_handle_input_handle_event ksu_handle_devpts is_ksu_transition; do
   grep -q " ${symbol}$" logs/vmlinux-symbols.txt || { echo "Missing linked KSU symbol: $symbol"; exit 1; }
 done
 make -s -C .ci/kernel "${MAKE_ARGS[@]}" kernelrelease > logs/kernelrelease.txt

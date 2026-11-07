@@ -52,6 +52,24 @@ def integrate(kernel,ksu,manager,logs):
          '\tstruct dentry *dentry;\n\tvoid *priv = NULL;\n',
          'extern int ksu_handle_devpts(struct inode *inode);',
          '\tksu_handle_devpts(pts_inode);')
+    # Linux 4.4 rejects init -> su when ksud lives on nosuid /data, even
+    # with SELinux allow rules. Upstream KSU supplies a narrowly scoped
+    # compatibility helper; wire it into the legacy SELinux check.
+    edit('security/selinux/hooks.c',
+         'static int check_nnp_nosuid(const struct linux_binprm *bprm,',
+         '#ifdef CONFIG_KSU\n'
+         'extern bool is_ksu_transition(const struct task_security_struct *old_tsec,\n'
+         '\t\t\t      const struct task_security_struct *new_tsec);\n'
+         '#endif\n\n'
+         'static int check_nnp_nosuid(const struct linux_binprm *bprm,')
+    edit('security/selinux/hooks.c',
+         '\tif (!nnp && !nosuid)\n\t\treturn 0; /* neither NNP nor nosuid */',
+         '#ifdef CONFIG_KSU\n'
+         '\t/* Permit only the KSU init -> su boot-daemon transition. */\n'
+         '\tif (is_ksu_transition(old_tsec, new_tsec))\n'
+         '\t\treturn 0;\n'
+         '#endif\n\n'
+         '\tif (!nnp && !nosuid)\n\t\treturn 0; /* neither NNP nor nosuid */')
     # Backport before make starts. Upstream's Makefile-time sed insertion can
     # occur after fs/namespace.o has already been compiled by a parallel job.
     umount_backport='''#ifdef CONFIG_KSU
@@ -117,8 +135,9 @@ int path_umount(struct path *path, int flags)
         for i in range(0,len(daemon),24):f.write(','.join('0x%02x'%b for b in daemon[i:i+24])+',\n')
         f.write('};\n')
     report={'kernelsu_commit':KSU_COMMIT,'kernelsu_version':12797,'hooks':'manual; built-in LSM hooks; no KSU kprobe hooks','manager_cert_size':998,'manager_cert_sha256':'79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7','official_manager_apk_sha256':APK_SHA256,'embedded_daemon_sha256':DAEMON_SHA256,'embedded_daemon_size':len(daemon),'manual_hook_file_sha256':changes,'kernel_namespace_note':'path_umount and can_umount plus internal prototype applied before compilation. Upstream Makefile-time namespace edits removed to prevent a parallel build race.'}
+    report['legacy_selinux_note']='Wired upstream is_ksu_transition into check_nnp_nosuid for init -> su on nosuid /data. Other transitions retain the original checks.'
     (logs/'kernelsu-integration.json').write_text(json.dumps(report,indent=2))
-    print('Applied six guarded manual hooks, early path_umount backport, and official ARM64 ksud.')
+    print('Applied six guarded manual hooks, legacy SELinux boot-daemon transition, early path_umount backport, and official ARM64 ksud.')
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--kernel',type=Path,required=True);p.add_argument('--ksu',type=Path,required=True);p.add_argument('--manager',type=Path,required=True);p.add_argument('--logs',type=Path,required=True)

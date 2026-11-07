@@ -16,7 +16,7 @@ def package(kernel,out,variant='baseline'):
     with_ksu=variant=='kernelsu-next'
     if with_ksu:
         assert b'KernelSU' in raw
-        lock=dict(lock,stage='kernelsu_next_v1.0.9_manual_hooks',kernelsu_commit='2241696498ce9dd742ce80b52c3ed6cca26e03ea',kernelsu_version=12797)
+        lock=dict(lock,stage='kernelsu_next_v1.0.9_manual_hooks_modulefix1',kernelsu_commit='2241696498ce9dd742ce80b52c3ed6cca26e03ea',kernelsu_version=12797,module_fix='legacy SELinux init -> su transition on nosuid data')
     assert dtb[:4]==b'\xd0\x0d\xfe\xed'
     assert struct.unpack_from('>I',dtb,4)[0]==len(dtb)
     page=struct.unpack_from('<I',base,36)[0];assert page==4096
@@ -34,9 +34,9 @@ def package(kernel,out,variant='baseline'):
     (out/'avb-verification.txt').write_text(verify.stdout+verify.stderr)
     assert verify.returncode==0,(verify.stdout,verify.stderr)
     boot_hash=hashlib.sha256(result).hexdigest()
-    title='Conq 4.4 KernelSU Next 12797 TEST' if with_ksu else 'Conq 4.4 BASELINE TEST - no KernelSU'
+    title='Conq 4.4 KernelSU Next 12797 MODULEFIX1 TEST' if with_ksu else 'Conq 4.4 BASELINE TEST - no KernelSU'
     script=(ROOT/'fixtures/recovery-installer.sh').read_text().replace('@TITLE@',title).replace('@SHA256@',boot_hash)
-    archive=out/('Conq-4.4-KernelSU-Next-12797-TEST.zip' if with_ksu else 'Conq-4.4-BASELINE-NO-KSU-TEST.zip')
+    archive=out/('Conq-4.4-KernelSU-Next-12797-MODULEFIX1-TEST.zip' if with_ksu else 'Conq-4.4-BASELINE-NO-KSU-TEST.zip')
     with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
         z.writestr('META-INF/com/google/android/update-binary',script)
         z.writestr('META-INF/com/google/android/updater-script','# Recovery shell installer\n')
