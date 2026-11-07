@@ -18,7 +18,7 @@ export PATH="$BUILD_ROOT/.ci/toolchain/bin:$PATH"
 clang --version | tee logs/compiler.txt
 grep -q 'b4fd512c36ca344a3ff69350219e8b0a67e9472a' logs/compiler.txt
 python3 scripts/integrate_ksu.py --kernel .ci/kernel --ksu .ci/KernelSU-Next --manager .ci/official-manager.apk --logs logs
-MAKE_ARGS=("O=$BUILD_ROOT/.ci/out" ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=-conq-ksunext-mfix1)
+MAKE_ARGS=("O=$BUILD_ROOT/.ci/out" ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=-conq-ksunext-mfix2)
 make -C .ci/kernel "${MAKE_ARGS[@]}" lavender-perf_defconfig
 .ci/kernel/scripts/config --file .ci/out/.config -e OVERLAY_FS -e KALLSYMS -e KALLSYMS_ALL -e KSU -e KSU_LSM_SECURITY_HOOKS -d KSU_KPROBES_HOOK -d KSU_DEBUG
 make -C .ci/kernel "${MAKE_ARGS[@]}" olddefconfig

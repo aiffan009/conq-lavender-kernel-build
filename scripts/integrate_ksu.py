@@ -63,13 +63,28 @@ def integrate(kernel,ksu,manager,logs):
          '#endif\n\n'
          'static int check_nnp_nosuid(const struct linux_binprm *bprm,')
     edit('security/selinux/hooks.c',
-         '\tif (!nnp && !nosuid)\n\t\treturn 0; /* neither NNP nor nosuid */',
+         '\tif (new_tsec->sid == old_tsec->sid)\n\t\treturn 0; /* No change in credentials */',
+         '\tif (new_tsec->sid == old_tsec->sid)\n\t\treturn 0; /* No change in credentials */\n\n'
          '#ifdef CONFIG_KSU\n'
          '\t/* Permit only the KSU init -> su boot-daemon transition. */\n'
-         '\tif (is_ksu_transition(old_tsec, new_tsec))\n'
+         '\tif (is_ksu_transition(old_tsec, new_tsec)) {\n'
+         '\t\tpr_info_once("KernelSU: legacy init -> su transition allowed\\n");\n'
          '\t\treturn 0;\n'
-         '#endif\n\n'
-         '\tif (!nnp && !nosuid)\n\t\treturn 0; /* neither NNP nor nosuid */')
+         '\t}\n'
+         '#endif')
+    # Before the policy is loaded, security_context_to_sid returns
+    # SECINITSID_KERNEL for su. Never cache that temporary SID for later boot.
+    ksud_source=ksu/'kernel/ksud.c';text=ksud_source.read_text()
+    before=('\tstatic u32 ksu_sid;\n\tchar *secdata;\n\tu32 seclen;\n'
+            '\tbool allowed = false;\n\n\tif (!ksu_sid)\n'
+            '\t\tsecurity_secctx_to_secid("u:r:su:s0", strlen("u:r:su:s0"), &ksu_sid);')
+    after=('\tu32 ksu_sid = 0;\n\tchar *secdata;\n\tu32 seclen;\n'
+           '\tbool allowed = false;\n\n'
+           '\tif (security_secctx_to_secid("u:r:su:s0", strlen("u:r:su:s0"), &ksu_sid))\n'
+           '\t\treturn false;')
+    assert text.count(before)==1,'upstream is_ksu_transition SID-cache anchor changed'
+    ksud_source.write_text(text.replace(before,after,1))
+    changes['KernelSU-Next/kernel/ksud.c']=hashlib.sha256(ksud_source.read_bytes()).hexdigest()
     # Backport before make starts. Upstream's Makefile-time sed insertion can
     # occur after fs/namespace.o has already been compiled by a parallel job.
     umount_backport='''#ifdef CONFIG_KSU
@@ -135,7 +150,7 @@ int path_umount(struct path *path, int flags)
         for i in range(0,len(daemon),24):f.write(','.join('0x%02x'%b for b in daemon[i:i+24])+',\n')
         f.write('};\n')
     report={'kernelsu_commit':KSU_COMMIT,'kernelsu_version':12797,'hooks':'manual; built-in LSM hooks; no KSU kprobe hooks','manager_cert_size':998,'manager_cert_sha256':'79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7','official_manager_apk_sha256':APK_SHA256,'embedded_daemon_sha256':DAEMON_SHA256,'embedded_daemon_size':len(daemon),'manual_hook_file_sha256':changes,'kernel_namespace_note':'path_umount and can_umount plus internal prototype applied before compilation. Upstream Makefile-time namespace edits removed to prevent a parallel build race.'}
-    report['legacy_selinux_note']='Wired upstream is_ksu_transition into check_nnp_nosuid for init -> su on nosuid /data. Other transitions retain the original checks.'
+    report['legacy_selinux_note']='MODULEFIX2: call is_ksu_transition after normal fast paths and resolve su SID without caching pre-policy SECINITSID_KERNEL. Log first accepted init -> su transition. Other transitions retain original checks.'
     (logs/'kernelsu-integration.json').write_text(json.dumps(report,indent=2))
     print('Applied six guarded manual hooks, legacy SELinux boot-daemon transition, early path_umount backport, and official ARM64 ksud.')
 
