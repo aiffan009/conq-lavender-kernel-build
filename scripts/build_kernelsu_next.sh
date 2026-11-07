@@ -18,9 +18,10 @@ export PATH="$BUILD_ROOT/.ci/toolchain/bin:$PATH"
 clang --version | tee logs/compiler.txt
 grep -q 'b4fd512c36ca344a3ff69350219e8b0a67e9472a' logs/compiler.txt
 python3 scripts/integrate_ksu.py --kernel .ci/kernel --ksu .ci/KernelSU-Next --manager .ci/official-manager.apk --logs logs
-MAKE_ARGS=("O=$BUILD_ROOT/.ci/out" ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LOCALVERSION=-conq-ksunext-mfix2)
+MAKE_ARGS=("O=$BUILD_ROOT/.ci/out" ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- EXTRAVERSION= LOCALVERSION=-conq-ksunext-r1)
 make -C .ci/kernel "${MAKE_ARGS[@]}" lavender-perf_defconfig
 .ci/kernel/scripts/config --file .ci/out/.config -e OVERLAY_FS -e KALLSYMS -e KALLSYMS_ALL -e KSU -e KSU_LSM_SECURITY_HOOKS -d KSU_KPROBES_HOOK -d KSU_DEBUG
+.ci/kernel/scripts/config --file .ci/out/.config --set-str LOCALVERSION "" -d LOCALVERSION_AUTO
 make -C .ci/kernel "${MAKE_ARGS[@]}" olddefconfig
 cp .ci/out/.config logs/generated.config
 for setting in CONFIG_SCHED_WALT=y CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y CONFIG_SND_SOC_SDM660_COMMON=y CONFIG_QCA_CLD_WLAN=y CONFIG_OVERLAY_FS=y CONFIG_KSU=y CONFIG_KSU_LSM_SECURITY_HOOKS=y CONFIG_KALLSYMS=y; do
@@ -34,6 +35,7 @@ for symbol in kernelsu_init ksu_handle_execveat ksu_handle_vfs_read ksu_handle_f
   grep -q " ${symbol}$" logs/vmlinux-symbols.txt || { echo "Missing linked KSU symbol: $symbol"; exit 1; }
 done
 make -s -C .ci/kernel "${MAKE_ARGS[@]}" kernelrelease > logs/kernelrelease.txt
+grep -qx '4.4.285-conq-ksunext-r1' logs/kernelrelease.txt || { echo 'Unexpected kernel release string'; exit 1; }
 cp logs/kernelsu-integration.json artifacts/kernelsu-integration.json
 python3 scripts/package_boot.py --kernel .ci/out/arch/arm64/boot/Image.gz-dtb --out artifacts --variant kernelsu-next
 echo 'KernelSU Next v1.0.9 / 12797 compiled and packaged. Device test is still required.'
